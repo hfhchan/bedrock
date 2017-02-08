@@ -1,26 +1,18 @@
-FROM ${FROM_DOCKER_REPOSITORY}:${GIT_COMMIT}
+# FROM line added by build_images.sh
 
-ENV PATH=/node_modules/.bin:$PATH
-ENV PIPELINE_LESS_BINARY=lessc
-ENV PIPELINE_SASS_BINARY=node-sass
-ENV PIPELINE_YUGLIFY_BINARY=yuglify
-
-COPY ./node_modules /
-COPY ./package.json /
-COPY ./lockdown.json /
-# --unsafe-perm required for lockdown to function
-RUN cd / && npm install --production --unsafe-perm
-
-COPY . /app
-RUN ./manage.py collectstatic -l --noinput -v 0
-RUN echo "${GIT_COMMIT}" > static/revision.txt
-
-# Cleanup
-RUN rm -rf /node_modules
-RUN ./docker/bin/softlinkstatic.py
-RUN apt-get purge -y nodejs npm python-dev build-essential libxml2-dev libxslt1-dev
-RUN apt-get autoremove -y
-RUN rm -rf /var/lib/apt /var/lib/dpkg /var/lib/cache /var/lib/log /usr/share/doc /usr/share/man /tmp/* /var/cache/*
+COPY ./bedrock ./bedrock
+COPY ./bin ./bin
+COPY ./docker ./docker
+COPY ./etc ./etc
+COPY ./lib ./lib
+COPY ./root_files ./root_files
+COPY ./scripts ./scripts
+COPY ./static ./static
+COPY ./vendor-local ./vendor-local
+COPY ./wsgi ./wsgi
+COPY ./LICENSE ./
+COPY ./contribute.json ./
+COPY ./manage.py ./
 
 # Change User
 RUN chown webdev.webdev -R .

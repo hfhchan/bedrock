@@ -8,57 +8,44 @@ fi
 
 DOCKER_REPO="${DOCKER_REPO:-mozorg}"
 BASE_IMAGE_TAG="${DOCKER_REPO}/bedrock_base:${GIT_COMMIT}"
+BUILD_IMAGE_TAG="${DOCKER_REPO}/bedrock_build:${GIT_COMMIT}"
+CODE_IMAGE_TAG="${DOCKER_REPO}/bedrock_code:${GIT_COMMIT}"
+
+function imageExists() {
+  docker history -q "$1" > /dev/null 2>&1
+  return $?
+}
+
+function generateDockerfile() {
+  echo "FROM $BASE_IMAGE_TAG" | cat - "docker/dockerfiles/bedrock_$1" > Dockerfile-$1
+}
+
+rm -f Dockerfile-*
+
+generateDockerfile code
+exit 0
 
 # build base image
-docker build -t "$BASE_IMAGE_TAG" --pull -f docker/dockerfiles/bedrock_base .
+if ! imageExists "$BASE_IMAGE_TAG"; then
+  docker build -t "$BASE_IMAGE_TAG" --pull -f docker/dockerfiles/bedrock_base .
+fi
 
-# build a build image
-cat << EOF > Dockerfile-build
-FROM $BASE_IMAGE_TAG
-
-ENV PATH=/node_modules/.bin:\$PATH
-ENV PIPELINE_LESS_BINARY=lessc
-ENV PIPELINE_SASS_BINARY=node-sass
-ENV PIPELINE_YUGLIFY_BINARY=yuglify
-
-RUN apt-get install -y --no-install-recommends nodejs-legacy npm
-
-COPY ./node_modules /
-COPY ./package.json /
-COPY ./lockdown.json /
-# --unsafe-perm required for lockdown to function
-RUN cd / && npm install --production --unsafe-perm
-EOF
-
-BUILD_IMAGE_TAG="${DOCKER_REPO}/bedrock_build:${GIT_COMMIT}"
-
-# build the builder image
-docker build -t "$BUILD_IMAGE_TAG" -f Dockerfile-build .
+# build a builder image
+if ! imageExists "$BUILD_IMAGE_TAG"; then
+  generateDockerfile build
+  echo "FROM $BASE_IMAGE_TAG" | cat - docker/dockerfiles/bedrock_build > Dockerfile-build
+  docker build -t "$BUILD_IMAGE_TAG" -f Dockerfile-build .
+fi
 
 # build the static files using the builder image
-docker run --user $(id -u) -v "$PWD:/app" --env-file docker/prod.env "$BUILD_IMAGE_TAG" \
-    docker/jenkins/build_staticfiles.sh
+# and include those and the app in a code image
+if ! imageExists "$CODE_IMAGE_TAG"; then
+  docker run --user $(id -u) -v "$PWD:/app" --env-file docker/prod.env "$BUILD_IMAGE_TAG" \
+      docker/jenkins/build_staticfiles.sh
 
-echo "${GIT_COMMIT}" > static/revision.txt
+  echo "${GIT_COMMIT}" > static/revision.txt
 
-# build the code image
-cat << EOF > Dockerfile-code
-FROM $BASE_IMAGE_TAG
-
-COPY ./bedrock ./bedrock
-COPY ./bin ./bin
-COPY ./docker ./docker
-COPY ./etc ./etc
-COPY ./lib ./lib
-COPY ./root_files ./root_files
-COPY ./scripts ./scripts
-COPY ./static ./static
-COPY ./vendor-local ./vendor-local
-COPY ./wsgi ./wsgi
-COPY ./LICENSE ./
-COPY ./contribute.json ./
-COPY ./manage.py ./
-EOF
-
-CODE_IMAGE_TAG="${DOCKER_REPO}/bedrock_code:${GIT_COMMIT}"
-docker build -t "$CODE_IMAGE_TAG" -f Dockerfile-code .
+  # build the code image
+  generateDockerfile code
+  docker build -t "$CODE_IMAGE_TAG" -f Dockerfile-code .
+fi
