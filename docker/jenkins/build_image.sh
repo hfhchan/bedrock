@@ -1,40 +1,61 @@
 #!/bin/bash
-#
-set -ex
-DOCKER_IMAGE_TAG=${DOCKER_REPOSITORY}:${GIT_COMMIT}
-TMP_DOCKER_TAG=${BUILD_TAG}
 
-# If docker image exists and no force rebuild do nothing
-FORCE_REBUILD=`echo "$FORCE_REBUILD" | tr '[:upper:]' '[:lower:]'`
-if [[ $FORCE_REBUILD != "true" ]];
-then
-    if docker history -q $DOCKER_IMAGE_TAG > /dev/null;
-    then
-        echo "Docker image already exists, do nothing"
-        exit 0;
-    fi
+set -euxo pipefail
+
+if [[ -z "$GIT_COMMIT" ]]; then
+  GIT_COMMIT=$(git rev-parse HEAD)
 fi
 
-cat docker/dockerfiles/${DOCKERFILE} | envsubst > Dockerfile
+DOCKER_REPO="${DOCKER_REPO:-mozorg}"
+BASE_IMAGE_TAG="${DOCKER_REPO}/bedrock_base:${GIT_COMMIT}"
 
-if [[ $FORCE_REBUILD == "true" ]];
-then
-    NO_CACHE="true"
-fi;
+# build base image
+docker build -t "$BASE_IMAGE_TAG" --pull -f docker/dockerfiles/bedrock_base .
 
-docker build -t ${TMP_DOCKER_TAG} --pull=${UPDATE_DOCKER_IMAGES:-true} --no-cache=${NO_CACHE:-false} . | tee docker-build.log
+# build a build image
+cat << EOF > Dockerfile-build
+FROM $DOCKER_IMAGE_TAG
 
-TAG=`tail -n 1 docker-build.log | awk '{ print $(NF) }'`
+ENV PATH=/node_modules/.bin:\$PATH
+ENV PIPELINE_LESS_BINARY=lessc
+ENV PIPELINE_SASS_BINARY=node-sass
+ENV PIPELINE_YUGLIFY_BINARY=yuglify
 
-if [[ $FORCE_REBUILD != "true" ]];
-then
-    if [[ $(tail -n 3 docker-build.log | grep "Using cache") && $(docker images | grep "${TAG}-squashed") ]];
-    then
-        echo "Docker image already squashed, skip squashing";
-        docker tag ${TAG}-squashed $DOCKER_IMAGE_TAG
-        exit 0;
-    fi
-fi
+RUN apt-get install -y --no-install-recommends nodejs-legacy npm
 
-docker-squash -t ${TAG}-squashed ${TMP_DOCKER_TAG}
-docker tag ${TAG}-squashed ${DOCKER_IMAGE_TAG}
+COPY ./node_modules /
+COPY ./package.json /
+COPY ./lockdown.json /
+# --unsafe-perm required for lockdown to function
+RUN cd / && npm install --production --unsafe-perm
+EOF
+
+BUILD_IMAGE_TAG="${DOCKER_REPO}/bedrock_build:${GIT_COMMIT}"
+
+# build the builder image
+docker build -t "$BUILD_IMAGE_TAG" -f Dockerfile-build .
+
+# build the static files using the builder image
+docker run --user $(id -u) -v "$PWD:/app" --env-file docker/prod.env "$BUILD_IMAGE_TAG" \
+    docker/jenkins/build_staticfiles.sh
+
+echo "${GIT_COMMIT}" > static/revision.txt
+
+# build the code image
+cat << EOF > Dockerfile-code
+FROM $DOCKER_IMAGE_TAG
+
+COPY bedrock ./
+COPY lib ./
+COPY root_files ./
+COPY scripts ./
+COPY static ./
+COPY vendor-local ./
+COPY wsgi ./
+COPY LICENSE ./
+COPY contribute.json ./
+COPY manage.py ./
+EOF
+
+CODE_IMAGE_TAG="${DOCKER_REPO}/bedrock_code:${GIT_COMMIT}"
+docker build -t "$CODE_IMAGE_TAG" -f Dockerfile-code .
