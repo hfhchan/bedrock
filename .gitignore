@@ -41,3 +41,4 @@ tests/functional/results.html
 tests/functional/assets/style.css
 .eslintcache
 .docker-build*
+Dockerfile-*

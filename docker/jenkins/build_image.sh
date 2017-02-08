@@ -45,19 +45,19 @@ echo "${GIT_COMMIT}" > static/revision.txt
 cat << EOF > Dockerfile-code
 FROM $BASE_IMAGE_TAG
 
-COPY bedrock ./
-COPY bin ./
-COPY docker ./
-COPY etc ./
-COPY lib ./
-COPY root_files ./
-COPY scripts ./
-COPY static ./
-COPY vendor-local ./
-COPY wsgi ./
-COPY LICENSE ./
-COPY contribute.json ./
-COPY manage.py ./
+COPY ./bedrock
+COPY ./bin
+COPY ./docker
+COPY ./etc
+COPY ./lib
+COPY ./root_files
+COPY ./scripts
+COPY ./static
+COPY ./vendor-local
+COPY ./wsgi
+COPY ./LICENSE /app/
+COPY ./contribute.json /app/
+COPY ./manage.py /app/
 EOF
 
 CODE_IMAGE_TAG="${DOCKER_REPO}/bedrock_code:${GIT_COMMIT}"
