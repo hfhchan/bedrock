@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euxo pipefail
+set -exo pipefail
 
 if [[ -z "$GIT_COMMIT" ]]; then
   GIT_COMMIT=$(git rev-parse HEAD)
@@ -14,7 +14,7 @@ docker build -t "$BASE_IMAGE_TAG" --pull -f docker/dockerfiles/bedrock_base .
 
 # build a build image
 cat << EOF > Dockerfile-build
-FROM $DOCKER_IMAGE_TAG
+FROM $BASE_IMAGE_TAG
 
 ENV PATH=/node_modules/.bin:\$PATH
 ENV PIPELINE_LESS_BINARY=lessc
@@ -43,9 +43,12 @@ echo "${GIT_COMMIT}" > static/revision.txt
 
 # build the code image
 cat << EOF > Dockerfile-code
-FROM $DOCKER_IMAGE_TAG
+FROM $BASE_IMAGE_TAG
 
 COPY bedrock ./
+COPY bin ./
+COPY docker ./
+COPY etc ./
 COPY lib ./
 COPY root_files ./
 COPY scripts ./
