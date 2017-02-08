@@ -43,6 +43,16 @@ def buildDockerImage(Map kwargs) {
     }
 }
 
+def includeDockerData(name, from_name, command, repo='mozorg') {
+    withEnv([
+        "DOCKER_REPOSITORY=${repo}/${name}",
+        "FROM_DOCKER_REPOSITORY=${repo}/${from_name}",
+        "DOCKER_DATA_COMMAND='${command}'",
+    ]) {
+        sh "docker/jenkins/include_data.sh"
+    }
+}
+
 def pushDockerhub(from_repo, to_repo='') {
     to_repo = to_repo ?: from_repo
     withCredentials([[$class: 'StringBinding',
