@@ -1,0 +1,4 @@
+# FROM line added by build_images.sh
+
+CMD ['docker/run-tests.sh']
+RUN pip install --no-cache-dir -r requirements/test.txt

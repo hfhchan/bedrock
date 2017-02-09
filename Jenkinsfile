@@ -40,8 +40,7 @@ if ( config.branches.containsKey(env.BRANCH_NAME) ) {
             }
             utils.ircNotification(config, [stage: 'Test & Deploy', status: 'starting'])
             try {
-                utils.buildDockerImage(dockerfile: 'bedrock_base', update: true)
-                utils.buildDockerImage(dockerfile: 'bedrock_code', fromDockerfile: 'bedrock_base')
+                sh 'docker/jenkins/build_images.sh'
             } catch(err) {
                 utils.ircNotification(config, [stage: 'Docker Build', status: 'failure'])
                 throw err
@@ -53,10 +52,9 @@ if ( config.branches.containsKey(env.BRANCH_NAME) ) {
     stage ('Test Images') {
         node {
             unstash 'scripts'
+            unstash 'tests'
             try {
-                withEnv(['DOCKER_REPOSITORY=mozorg/bedrock_code']) {
-                    sh 'docker/jenkins/run_tests.sh'
-                }
+                sh 'docker/jenkins/run_tests.sh'
             } catch(err) {
                 utils.ircNotification(config, [stage: 'Unit Test', status: 'failure'])
                 throw err
@@ -72,7 +70,7 @@ if ( config.branches.containsKey(env.BRANCH_NAME) ) {
                 node {
                     unstash 'scripts'
                     try {
-                        utils.includeDockerData('bedrock_l10n', 'bedrock_code', 'python manage.py l10n_update')
+                        sh 'docker/jenkins/include_data.sh prod'
                     } catch(err) {
                         utils.ircNotification(config, [stage: 'L10n Build', status: 'failure'])
                         throw err
@@ -181,14 +179,8 @@ else if ( env.BRANCH_NAME ==~ /^demo__[\w-]+$/ ) {
         stage ('build') {
             milestone()
             try {
-                utils.buildDockerImage(dockerfile: 'bedrock_base', update: true)
-                utils.buildDockerImage(dockerfile: 'bedrock_code', fromDockerfile: 'bedrock_base')
-                utils.includeDockerData('bedrock_demo', 'bedrock_code', 'bin/sync_all')
-                // sh 'make clean'
-                // sh 'make sync-all'
-                // sh 'echo "ENV GIT_SHA ${GIT_COMMIT}" >> docker/dockerfiles/bedrock_dev_final'
-                // sh 'echo "RUN echo ${GIT_COMMIT} > static/revision.txt" >> docker/dockerfiles/bedrock_dev_final'
-                // sh 'make build-final'
+                sh 'docker/jenkins/build_images.sh'
+                sh 'docker/jenkins/include_data.sh demo'
             } catch(err) {
                 utils.ircNotification(config, [stage: 'Demo Build', status: 'failure'])
                 throw err
